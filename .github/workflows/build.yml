@@ -1,0 +1,64 @@
+name: Build lmi UEFI (runner)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master, main]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/tianocore/containers/ubuntu-22-dev:latest
+      options: --user root
+    steps:
+      - name: Tool check
+        shell: bash
+        run: |
+          git config --global --add safe.directory '*'
+          command -v python >/dev/null 2>&1 || ln -sf "$(command -v python3)" /usr/local/bin/python
+          if ! command -v msgfmt >/dev/null 2>&1; then
+            printf '#!/bin/sh\nout=""\nwhile [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then out="$2"; shift 2; else shift; fi; done\n[ -n "$out" ] && : > "$out"\nexit 0\n' > /usr/local/bin/msgfmt
+            chmod +x /usr/local/bin/msgfmt
+          fi
+          for t in iasl nasm clang lld ld.lld dtc msgfmt python3 git make zip; do
+            printf '%-10s ' "$t"; command -v $t || echo "(missing)"
+          done
+
+      - name: Checkout edk2-msm source (with submodules)
+        uses: actions/checkout@v4
+        with:
+          repository: liaozihao13954/edk2-msm
+          ref: master
+          submodules: recursive
+          fetch-depth: 1
+          path: src
+
+      - name: Build UEFI image for lmi
+        shell: bash
+        working-directory: src
+        run: |
+          set -o pipefail
+          ./build.sh --device lmi --acpi 2>&1 | tee build.log
+
+      - name: Collect produced images
+        if: always()
+        shell: bash
+        working-directory: src
+        run: |
+          mkdir -p out
+          find . -maxdepth 6 \( -name '*.img' -o -name '*.fd' \) -printf '%p %s bytes\n' | head -60 | tee image-list.txt
+          find . -maxdepth 6 \( -name '*.img' -o -name '*.fd' \) -size +100k -exec cp -v {} out/ \; 2>/dev/null || true
+          cp -v build.log out/ 2>/dev/null || true
+          cp -v image-list.txt out/ 2>/dev/null || true
+          ls -lh out/
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-lmi
+          path: src/out/
+          if-no-files-found: warn
+          retention-days: 30

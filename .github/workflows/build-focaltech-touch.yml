@@ -1,0 +1,42 @@
+name: build focaltech touch driver (ARM64)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Show WDK / SDK
+        shell: pwsh
+        run: |
+          Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Include' -ErrorAction SilentlyContinue | Select-Object Name
+          Get-ChildItem 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170' -ErrorAction SilentlyContinue | Select-Object -First 3 Name
+
+      - name: Checkout FocalTechTouch
+        uses: actions/checkout@v4
+        with:
+          repository: WOA-Project/FocalTechTouch
+          ref: master
+          path: src
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Release ARM64
+        shell: cmd
+        run: |
+          msbuild src\contrib\FocalTechTouch.vcxproj /p:Configuration=Release /p:Platform=ARM64 /p:SignMode=Off /p:Inf2CatEnabled=false /m /v:minimal
+
+      - name: Collect
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Get-ChildItem -Path src -Recurse -Include *.sys,*.inf,*.pdb | Copy-Item -Destination out -Force
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ftdrv-arm64
+          path: out\*
+          if-no-files-found: error

@@ -26,6 +26,13 @@ jobs:
           choco install windowsdriverkit11 -y --no-progress
           Test-Path 'C:\Program Files (x86)\Windows Kits\10\Include\10.0.22000.0\km\wdm.h'
 
+      - name: Locate WDF headers
+        shell: pwsh
+        run: |
+          $h = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Include\wdf' -Recurse -Filter wdf.h | Select-Object -First 1
+          Write-Host "WDF header: $($h.FullName)"
+          Add-Content -Path $env:GITHUB_ENV -Value ('CL=/D_ARM64_ /I"{0}"' -f $h.DirectoryName)
+
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 

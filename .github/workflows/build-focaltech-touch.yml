@@ -29,7 +29,10 @@ jobs:
       - name: Locate WDF headers
         shell: pwsh
         run: |
-          $h = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Include\wdf' -Recurse -Filter wdf.h | Select-Object -First 1
+          # Use the SAME KMDF version for headers as the link libs (1.31).
+          # Mixing 1.11 headers with 1.31 WdfLdr.lib gives unresolved WdfFunctions.
+          $h = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Include\wdf\kmdf\1.31' -Filter wdf.h -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $h) { $h = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Include\wdf' -Recurse -Filter wdf.h | Sort-Object FullName -Descending | Select-Object -First 1 }
           Write-Host "WDF header: $($h.FullName)"
           $root = (Get-Location).Path
           $stub = Join-Path $root 'src\include\lmi_trace_stub.h'
@@ -75,6 +78,7 @@ jobs:
           // used here has no CRT; provide no-op definitions.
           void __security_init_cookie(void) {}
           void __security_check_cookie(unsigned long long x) { (void)x; }
+          void __security_push_cookie(void) {}
           '@
           Set-Content -Path 'src\include\lmi_trace_stub.h' -Value $stub -Encoding ASCII
 

@@ -331,6 +331,32 @@ jobs:
               Copy-Item -Destination out -Force
           }
 
+      - name: Self-sign driver + export test certificate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path (Get-Location) 'out'
+          $sys = Join-Path $out 'FocalTechTouch.sys'
+          Write-Host "=== create self-signed test certificate (code signing) ==="
+          $cert = New-SelfSignedCertificate -Type CodeSigning -Provider "Microsoft Software Key Storage Provider" `
+             -Subject "CN=LMI Touch Test Signing" -KeyAlgorithm RSA -KeyLength 2048 `
+             -NotAfter (Get-Date).AddYears(10) -CertStoreLocation "Cert:\CurrentUser\My"
+          Write-Host "thumbprint $($cert.Thumbprint)"
+          $pfx = Join-Path $out 'lmi-testcert.pfx'
+          $pass = ConvertTo-SecureString -String "lmi123" -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath $pfx -Password $pass | Out-Null
+          Export-Certificate -Cert $cert -FilePath (Join-Path $out 'lmi-testcert.cer') | Out-Null
+          $st = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match '\\x64\\signtool.exe$' } | Select-Object -First 1
+          if (-not $st) { $st = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe | Select-Object -First 1 }
+          if (-not $st) { throw "signtool.exe not found" }
+          Write-Host "signtool $($st.FullName)"
+          & $st.FullName sign /f $pfx /p "lmi123" /fd SHA256 $sys
+          Write-Host "sign sys exit=$LASTEXITCODE"
+          & $st.FullName verify /pa /v $sys 2>&1 | Select-Object -Last 8
+          Write-Host "=== signed files ==="
+          Get-ChildItem $out | Select-Object Name,Length | Format-Table -AutoSize
+
       - name: Upload
         uses: actions/upload-artifact@v4
         with:

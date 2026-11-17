@@ -182,7 +182,7 @@ jobs:
             [System.IO.File]::WriteAllBytes($inf, $enc.GetBytes($t))
           }
           Write-Host "INF IDs:"
-          ($t -split "`r?`n" | Where-Object { $_ -match 'ACPI\' }) | ForEach-Object { Write-Host "  $_" }
+          ($t -split "`r?`n" | Where-Object { $_ -match 'ACPI' }) | ForEach-Object { Write-Host "  $_" }
 
       - name: Collect
         shell: pwsh

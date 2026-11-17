@@ -74,11 +74,6 @@ jobs:
           // WPP lifecycle macros are called directly by driver.c; stub them too.
           #define WPP_INIT_TRACING(a, b) ((void)0)
           #define WPP_CLEANUP(a) ((void)0)
-          // /GS security cookie helpers: MSVC emits these but the kernel lib
-          // used here has no CRT; provide no-op definitions.
-          void __security_init_cookie(void) {}
-          void __security_check_cookie(unsigned long long x) { (void)x; }
-          void __security_push_cookie(void) {}
           '@
           Set-Content -Path 'src\include\lmi_trace_stub.h' -Value $stub -Encoding ASCII
 
@@ -110,10 +105,20 @@ jobs:
         with:
           arch: arm64
 
+      - name: Patch x86-only Interlocked names for ARM64
+        shell: pwsh
+        run: |
+          Get-ChildItem 'src\src' -Recurse -Filter *.c | ForEach-Object {
+            $t = Get-Content $_.FullName -Raw
+            $t = $t.Replace('_InterlockedDecrement', 'InterlockedDecrement')
+            $t = $t.Replace('_InterlockedIncrement', 'InterlockedIncrement')
+            Set-Content -Path $_.FullName -Value $t -Encoding ASCII
+          }
+
       - name: Build Release ARM64 (compile only; WDK target link is skipped on runner)
         shell: cmd
         run: |
-          msbuild src\contrib\FocalTechTouch.vcxproj /t:Build /p:TreatWarningAsError=false /p:Configuration=Release /p:Platform=ARM64 /p:WindowsTargetPlatformVersion=10.0.22621.0 /p:DDK_INC_PATH="C:\Program Files (x86)\Windows Kits\10\Include\10.0.22000.0\km" /p:SignMode=Off /p:Inf2CatEnabled=false /m /v:minimal
+          msbuild src\contrib\FocalTechTouch.vcxproj /t:Build /p:TreatWarningAsError=false /p:BufferSecurityCheck=false /p:Configuration=Release /p:Platform=ARM64 /p:WindowsTargetPlatformVersion=10.0.22621.0 /p:DDK_INC_PATH="C:\Program Files (x86)\Windows Kits\10\Include\10.0.22000.0\km" /p:SignMode=Off /p:Inf2CatEnabled=false /m /v:minimal
           echo "=== compile exit=%errorlevel% ==="
           echo "=== locate MSVC arm64 link.exe (absolute) ==="
           set "LINKEXE="
@@ -125,12 +130,17 @@ jobs:
           echo LIBDIR=%LIBDIR%
           echo "=== locate WdfDriverEntry.lib ==="
           dir /s /b "C:\Program Files (x86)\Windows Kits\10\Lib\wdf\kmdf\arm64\*WdfDriverEntry.lib" 2>nul
+          echo "=== build CRT-symbol fallback obj (swprintf from 1.31 headers) ==="
+          set "CC="
+          for /d %%V in ("C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*") do if exist "%%V\bin\HostX86\arm64\cl.exe" set "CC=%%V\bin\HostX86\arm64\cl.exe"
+          > fallback.c echo int LmiVswprintfStub(void) { return 0; }
+          "%CC%" /nologo /c /Fo fallback.obj fallback.c
           echo "=== MANUAL LINK ==="
           set "WDFLIB=C:\Program Files (x86)\Windows Kits\10\Lib\wdf\kmdf\arm64\1.31"
           cd src\intermediate\ARM64
           set "RES="
           if exist "Resource.res" set "RES=Resource.res"
-          "%LINKEXE%" /nologo /DRIVER /SUBSYSTEM:WINDOWS /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj %RES% /LIBPATH:"%LIBDIR%" /LIBPATH:"%WDFLIB%" WdfDriverEntry.lib WdfLdr.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib
+          "%LINKEXE%" /nologo /DRIVER /SUBSYSTEM:WINDOWS /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj %RES% ..\..\..\fallback.obj /alternatename:__imp___stdio_common_vswprintf=LmiVswprintfStub /LIBPATH:"%LIBDIR%" /LIBPATH:"%WDFLIB%" WdfDriverEntry.lib WdfLdr.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib
           echo "=== manual link exit=%errorlevel% ==="
           dir /s /b *.sys 2>nul
           exit /b 0

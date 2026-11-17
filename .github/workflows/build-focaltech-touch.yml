@@ -146,10 +146,25 @@ jobs:
           cd src\intermediate\ARM64
           set "RES="
           if exist "Resource.res" set "RES=Resource.res"
-          "%LINKEXE%" /nologo /DRIVER /SUBSYSTEM:WINDOWS /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj %RES% ..\..\..\fallback.obj /alternatename:__imp___stdio_common_vswprintf=LmiVswprintfStub /LIBPATH:"%LIBDIR%" /LIBPATH:"%WDFLIB%" WdfDriverEntry.lib WdfLdr.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib
+          "%LINKEXE%" /nologo /DRIVER /SUBSYSTEM:NATIVE /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj %RES% ..\..\..\fallback.obj /alternatename:__imp___stdio_common_vswprintf=LmiVswprintfStub /LIBPATH:"%LIBDIR%" /LIBPATH:"%WDFLIB%" WdfDriverEntry.lib WdfLdr.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib
           echo "=== manual link exit=%errorlevel% ==="
           dir /s /b *.sys 2>nul
           exit /b 0
+
+      - name: Adapt INF hardware IDs for lmi
+        shell: pwsh
+        run: |
+          $inf = 'src\src\FocalTechTouch.inf'
+          if (-not (Test-Path $inf)) { $inf = (Get-ChildItem src -Recurse -Filter FocalTechTouch.inf | Select-Object -First 1).FullName }
+          $bytes = [System.IO.File]::ReadAllBytes($inf)
+          $enc = if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) { [System.Text.Encoding]::Unicode } else { [System.Text.Encoding]::ASCII }
+          $t = $enc.GetString($bytes)
+          if ($t -notmatch 'PNP0C50') {
+            $t = $t -replace '(\[Standard\.NT\$ARCH\$\]\r?\n)', "`$1%TchDriver_Device_Desc% = TchDriver_Device.NT, ACPI\PNP0C50`r`n%TchDriver_Device_Desc% = TchDriver_Device.NT, ACPI\FTS0001`r`n"
+            [System.IO.File]::WriteAllBytes($inf, $enc.GetBytes($t))
+          }
+          Write-Host "INF IDs:"
+          ($t -split "`r?`n" | Where-Object { $_ -match 'ACPI\' }) | ForEach-Object { Write-Host "  $_" }
 
       - name: Collect
         shell: pwsh

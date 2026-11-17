@@ -354,6 +354,22 @@ jobs:
           & $st.FullName sign /f $pfx /p "lmi123" /fd SHA256 $sys
           Write-Host "sign sys exit=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { throw "signtool sign failed" }
+
+          Write-Host "=== export certificate registry blobs (for offline trust import) ==="
+          $cer = Join-Path $out 'lmi-testcert.cer'
+          $thumb = $cert.Thumbprint
+          certutil -user -addstore -f Root $cer 2>&1 | Out-Null
+          certutil -user -addstore -f TrustedPublisher $cer 2>&1 | Out-Null
+          foreach ($store in @('Root','TrustedPublisher')) {
+            $k = "HKCU:\SOFTWARE\Microsoft\SystemCertificates\$store\Certificates\$thumb"
+            if (Test-Path $k) {
+              $blob = (Get-ItemProperty -LiteralPath $k -Name Blob -ErrorAction SilentlyContinue).Blob
+              if ($blob) {
+                [IO.File]::WriteAllBytes((Join-Path $out "blob_$store.bin"), $blob)
+                Write-Host "$store blob $($blob.Length) bytes"
+              } else { Write-Host "$store : no Blob value" }
+            } else { Write-Host "$store : key missing at $k" }
+          }
           Write-Host "=== signed files ==="
           Get-ChildItem $out | Select-Object Name,Length | Format-Table -AutoSize
           exit 0

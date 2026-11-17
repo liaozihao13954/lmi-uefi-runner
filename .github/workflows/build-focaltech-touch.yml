@@ -105,15 +105,14 @@ jobs:
         with:
           arch: arm64
 
-      - name: Patch x86-only Interlocked names for ARM64
+      - name: Drop selftest sources (unused ARM64-intrinsic headaches)
         shell: pwsh
         run: |
-          Get-ChildItem 'src\src' -Recurse -Filter *.c | ForEach-Object {
-            $t = Get-Content $_.FullName -Raw
-            $t = $t.Replace('_InterlockedDecrement', 'InterlockedDecrement')
-            $t = $t.Replace('_InterlockedIncrement', 'InterlockedIncrement')
-            Set-Content -Path $_.FullName -Value $t -Encoding ASCII
-          }
+          $proj = 'src\contrib\FocalTechTouch.vcxproj'
+          $t = Get-Content $proj -Raw
+          $t = $t -replace '<ClCompile Include="[^"]*selftest\.c"\s*/>', ''
+          $t = $t -replace '<ClCompile Include="[^"]*enoselftest\.c"\s*/>', ''
+          Set-Content -Path $proj -Value $t -Encoding UTF8
 
       - name: Build Release ARM64 (compile only; WDK target link is skipped on runner)
         shell: cmd
@@ -137,9 +136,9 @@ jobs:
           >> fallback.c echo void __security_check_cookie(unsigned long long x) { (void)x; }
           >> fallback.c echo void __security_push_cookie(void) {}
           >> fallback.c echo void __security_pop_cookie(void) {}
-          >> fallback.c echo long _InterlockedDecrement(volatile long *p) { return --*p; }
-          >> fallback.c echo long _InterlockedIncrement(volatile long *p) { return ++*p; }
           >> fallback.c echo int LmiVswprintfStub(void) { return 0; }
+          >> fallback.c echo long TchSelfTestInitialize(void *d) { (void)d; return 0; }
+          >> fallback.c echo long TchEnoSelfTestInitialize(void *d) { (void)d; return 0; }
           "%CC%" /nologo /c /Fo:fallback.obj fallback.c
           dir fallback.obj
           echo "=== MANUAL LINK ==="

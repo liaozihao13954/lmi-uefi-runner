@@ -112,14 +112,14 @@ jobs:
           set "LIBDIR="
           for %%W in (10.0.22000.0 10.0.22621.0 10.0.26100.0) do if exist "C:\Program Files (x86)\Windows Kits\10\Lib\%%W\km\arm64\ntoskrnl.lib" set "LIBDIR=C:\Program Files (x86)\Windows Kits\10\Lib\%%W\km\arm64"
           echo LIBDIR=%LIBDIR%
-          echo "=== locate WdfLdr.lib / WdfDriverEntry.lib ==="
-          dir /s /b "C:\Program Files (x86)\Windows Kits\10\Lib\*WdfLdr.lib" 2>nul
-          dir /s /b "C:\Program Files (x86)\Windows Kits\10\Lib\*WdfDriverEntry.lib" 2>nul
+          echo "=== locate WdfDriverEntry.lib ==="
+          dir /s /b "C:\Program Files (x86)\Windows Kits\10\Lib\wdf\kmdf\arm64\*WdfDriverEntry.lib" 2>nul
           echo "=== MANUAL LINK ==="
+          set "WDFLIB=C:\Program Files (x86)\Windows Kits\10\Lib\wdf\kmdf\arm64\1.31"
           cd src\intermediate\ARM64
           set "RES="
           if exist "Resource.res" set "RES=Resource.res"
-          "%LINKEXE%" /nologo /DRIVER /SUBSYSTEM:WINDOWS /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj %RES% /LIBPATH:"%LIBDIR%" /LIBPATH:"%LIBDIR%\wdf" WdfLdr.lib WdfDriverEntry.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib
+          "%LINKEXE%" /nologo /DRIVER /SUBSYSTEM:WINDOWS /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj %RES% /LIBPATH:"%LIBDIR%" /LIBPATH:"%WDFLIB%" WdfLdr.lib WdfDriverEntry.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib
           echo "=== manual link exit=%errorlevel% ==="
           dir /s /b *.sys 2>nul
           exit /b 0

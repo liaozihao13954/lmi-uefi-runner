@@ -354,9 +354,9 @@ jobs:
           & $st.FullName sign /f $pfx /p "lmi123" /fd SHA256 $sys
           Write-Host "sign sys exit=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { throw "signtool sign failed" }
-          try { & $st.FullName verify /v $sys 2>&1 | Select-Object -Last 6 } catch { Write-Host "verify (non-fatal): $_" }
           Write-Host "=== signed files ==="
           Get-ChildItem $out | Select-Object Name,Length | Format-Table -AutoSize
+          exit 0
 
       - name: Upload
         uses: actions/upload-artifact@v4

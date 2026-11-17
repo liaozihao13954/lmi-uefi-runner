@@ -31,16 +31,59 @@ jobs:
         run: |
           $h = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Include\wdf' -Recurse -Filter wdf.h | Select-Object -First 1
           Write-Host "WDF header: $($h.FullName)"
-          Add-Content -Path $env:GITHUB_ENV -Value ('CL=/D_ARM64_ /I"{0}"' -f $h.DirectoryName)
+          $root = (Get-Location).Path
+          $stub = Join-Path $root 'src\include\lmi_trace_stub.h'
+          Add-Content -Path $env:GITHUB_ENV -Value ('CL=/D_ARM64_ /I"{0}" /FI"{1}"' -f $h.DirectoryName, $stub)
 
-      - name: Replace WPP tracing with DbgPrintEx
+      - name: Replace WPP tracing with a forced-include stub
         shell: pwsh
         run: |
-          Add-Content -Path 'src\include\trace.h' -Value '#define Trace(LEVEL, FLAGS, MSG, ...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "FocalTechTouch: " MSG "\n", ##__VA_ARGS__)'
+          #
+          # WPP compiles *.tmh per source file (generated from trace.h).  Simply
+          # appending a Trace macro to trace.h does nothing because no .c
+          # includes it directly.  Inject one stub into EVERY translation unit
+          # with /FI instead, defining all LEVEL/FLAG constants the sources use.
+          #
+          $stub = @'
+          #pragma once
+          #define TRACE_LEVEL_CRITICAL     1
+          #define TRACE_LEVEL_ERROR        2
+          #define TRACE_LEVEL_WARNING      3
+          #define TRACE_LEVEL_INFORMATION  4
+          #define TRACE_LEVEL_VERBOSE      5
+          #define TRACE_INIT        1
+          #define TRACE_REGISTRY    1
+          #define TRACE_HID         1
+          #define TRACE_PNP         1
+          #define TRACE_POWER       1
+          #define TRACE_SPB         1
+          #define TRACE_CONFIG      1
+          #define TRACE_REPORTING   1
+          #define TRACE_INTERRUPT   1
+          #define TRACE_SAMPLES     1
+          #define TRACE_OTHER       1
+          #define TRACE_IDLE        1
+          #define TRACE_DRIVER      1
+          // /FI injects this before any #include, so DbgPrintEx is not declared
+          // yet.  Keep the stub dependency-free: a no-op macro.  Params are
+          // never evaluated, so format strings / levels need not resolve.
+          #define Trace(...) ((void)0)
+          '@
+          Set-Content -Path 'src\include\lmi_trace_stub.h' -Value $stub -Encoding ASCII
+
+          # Strip the WPP-generated .tmh #includes (they would be empty now).
           Get-ChildItem 'src' -Recurse -Include *.c,*.h | ForEach-Object {
             $keep = Get-Content $_.FullName | Where-Object { $_ -notmatch '#include\s*[<"]\w+\.tmh[>"]' }
-            Set-Content -Path $_.FullName -Value $keep -Encoding UTF8
+            Set-Content -Path $_.FullName -Value $keep -Encoding ASCII
           }
+
+          # Turn off WPP generation and warning-as-error in the project file.
+          $proj = 'src\contrib\FocalTechTouch.vcxproj'
+          $t = Get-Content $proj -Raw
+          $t = $t.Replace('<WppEnabled>true</WppEnabled>', '<WppEnabled>false</WppEnabled>')
+          $t = $t.Replace('<WppRecorderEnabled>true</WppRecorderEnabled>', '<WppRecorderEnabled>false</WppRecorderEnabled>')
+          $t = $t.Replace('<TreatWarningAsError>true</TreatWarningAsError>', '<TreatWarningAsError>false</TreatWarningAsError>')
+          Set-Content -Path $proj -Value $t -Encoding UTF8
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2

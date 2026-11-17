@@ -300,7 +300,7 @@ jobs:
           cd src\intermediate\ARM64
           set "RES="
           if exist "Resource.res" set "RES=Resource.res"
-          "%LINKEXE%" /nologo /DRIVER /SUBSYSTEM:NATIVE /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj %RES% ..\..\..\fallback.obj /alternatename:__imp___stdio_common_vswprintf=LmiVswprintfStub /LIBPATH:"%LIBDIR%" /LIBPATH:"%WDFLIB%" WdfDriverEntry.lib WdfLdr.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib
+          "%LINKEXE%" /nologo /DRIVER /SUBSYSTEM:NATIVE,10.0 /OSVERSION:10.0 /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj %RES% ..\..\..\fallback.obj /alternatename:__imp___stdio_common_vswprintf=LmiVswprintfStub /LIBPATH:"%LIBDIR%" /LIBPATH:"%WDFLIB%" WdfDriverEntry.lib WdfLdr.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib
           echo "=== manual link exit=%errorlevel% ==="
           dir /s /b *.sys 2>nul
           exit /b 0

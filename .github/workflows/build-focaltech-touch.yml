@@ -68,6 +68,9 @@ jobs:
           // yet.  Keep the stub dependency-free: a no-op macro.  Params are
           // never evaluated, so format strings / levels need not resolve.
           #define Trace(...) ((void)0)
+          // WPP lifecycle macros are called directly by driver.c; stub them too.
+          #define WPP_INIT_TRACING(a, b) ((void)0)
+          #define WPP_CLEANUP(a) ((void)0)
           '@
           Set-Content -Path 'src\include\lmi_trace_stub.h' -Value $stub -Encoding ASCII
 
@@ -116,10 +119,13 @@ jobs:
           dir /s /b "C:\Program Files (x86)\Windows Kits\10\Lib\wdf\kmdf\arm64\*WdfDriverEntry.lib" 2>nul
           echo "=== MANUAL LINK ==="
           set "WDFLIB=C:\Program Files (x86)\Windows Kits\10\Lib\wdf\kmdf\arm64\1.31"
+          set "VCLIB="
+          for /d %%V in ("C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*") do if exist "%%V\lib\arm64\bufferoverflowU.lib" set "VCLIB=%%V\lib\arm64"
+          echo VCLIB=%VCLIB%
           cd src\intermediate\ARM64
           set "RES="
           if exist "Resource.res" set "RES=Resource.res"
-          "%LINKEXE%" /nologo /DRIVER /SUBSYSTEM:WINDOWS /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj %RES% /LIBPATH:"%LIBDIR%" /LIBPATH:"%WDFLIB%" WdfLdr.lib WdfDriverEntry.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib
+          "%LINKEXE%" /nologo /DRIVER /SUBSYSTEM:WINDOWS /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj %RES% /LIBPATH:"%LIBDIR%" /LIBPATH:"%WDFLIB%" /LIBPATH:"%VCLIB%" WdfDriverEntry.lib WdfLdr.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib bufferoverflowU.lib
           echo "=== manual link exit=%errorlevel% ==="
           dir /s /b *.sys 2>nul
           exit /b 0

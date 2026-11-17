@@ -83,6 +83,12 @@ jobs:
           $t = $t.Replace('<WppEnabled>true</WppEnabled>', '<WppEnabled>false</WppEnabled>')
           $t = $t.Replace('<WppRecorderEnabled>true</WppRecorderEnabled>', '<WppRecorderEnabled>false</WppRecorderEnabled>')
           $t = $t.Replace('<TreatWarningAsError>true</TreatWarningAsError>', '<TreatWarningAsError>false</TreatWarningAsError>')
+          # THE root cause of "compiles but no .sys": this project declares
+          # ConfigurationType=Driver but is missing <DriverType>KMDF</DriverType>,
+          # so MSBuild runs ClCompile but skips the driver Link target.  Official
+          # WDK KMDF projects always carry DriverType=KMDF.
+          $t = $t.Replace('<ConfigurationType>Driver</ConfigurationType>',
+                          '<ConfigurationType>Driver</ConfigurationType><DriverType>KMDF</DriverType>')
           Set-Content -Path $proj -Value $t -Encoding UTF8
 
       - name: Setup MSBuild

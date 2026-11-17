@@ -102,14 +102,20 @@ jobs:
       - name: Build Release ARM64 (compile only; WDK target link is skipped on runner)
         shell: cmd
         run: |
-          msbuild src\contrib\FocalTechTouch.vcxproj /t:Build /p:TreatWarningAsError=false /p:Configuration=Release /p:Platform=ARM64 /p:WindowsTargetPlatformVersion=10.0.22000.0 /p:DDK_INC_PATH="C:\Program Files (x86)\Windows Kits\10\Include\10.0.22000.0\km" /p:SignMode=Off /p:Inf2CatEnabled=false /m /v:minimal
+          msbuild src\contrib\FocalTechTouch.vcxproj /t:Build /p:TreatWarningAsError=false /p:Configuration=Release /p:Platform=ARM64 /p:WindowsTargetPlatformVersion=10.0.22621.0 /p:DDK_INC_PATH="C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\km" /p:SignMode=Off /p:Inf2CatEnabled=false /m /v:minimal
           echo "=== compile exit=%errorlevel% ==="
-          echo "=== MANUAL LINK (link.exe from MSVC ARM64 env) ==="
-          where link.exe
-          set "LIBDIR=C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22000.0\km\arm64"
+          echo "=== locate MSVC arm64 link.exe (absolute) ==="
+          set "LINKEXE="
+          for /d %%V in ("C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*") do if exist "%%V\bin\HostX86\arm64\link.exe" set "LINKEXE=%%V\bin\HostX86\arm64\link.exe"
+          echo LINKEXE=%LINKEXE%
+          echo "=== locate WDK km arm64 lib dir ==="
+          set "LIBDIR="
+          for %%W in (10.0.22621.0 10.0.22000.0 10.0.26100.0) do if exist "C:\Program Files (x86)\Windows Kits\10\Lib\%%W\km\arm64\ntoskrnl.lib" set "LIBDIR=C:\Program Files (x86)\Windows Kits\10\Lib\%%W\km\arm64"
+          echo LIBDIR=%LIBDIR%
           dir /b "%LIBDIR%\wdf" 2>nul
+          echo "=== MANUAL LINK ==="
           cd src\intermediate\ARM64
-          link.exe /nologo /DRIVER /SUBSYSTEM:WINDOWS /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj Resource.res /LIBPATH:"%LIBDIR%" /LIBPATH:"%LIBDIR%\wdf" WdfLdr.lib WdfDriverEntry.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib
+          "%LINKEXE%" /nologo /DRIVER /SUBSYSTEM:WINDOWS /MACHINE:ARM64 /NODEFAULTLIB /INCREMENTAL:NO /ENTRY:FxDriverEntry /OUT:FocalTechTouch.sys /PDB:FocalTechTouch.pdb *.obj Resource.res /LIBPATH:"%LIBDIR%" /LIBPATH:"%LIBDIR%\wdf" WdfLdr.lib WdfDriverEntry.lib hidclass.lib ntoskrnl.lib hal.lib wdmsec.lib
           echo "=== manual link exit=%errorlevel% ==="
           dir /s /b *.sys 2>nul
           exit /b 0

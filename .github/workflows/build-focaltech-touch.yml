@@ -133,8 +133,15 @@ jobs:
           echo "=== build CRT-symbol fallback obj (swprintf from 1.31 headers) ==="
           set "CC="
           for /d %%V in ("C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*") do if exist "%%V\bin\HostX86\arm64\cl.exe" set "CC=%%V\bin\HostX86\arm64\cl.exe"
-          > fallback.c echo int LmiVswprintfStub(void) { return 0; }
-          "%CC%" /nologo /c /Fo fallback.obj fallback.c
+          > fallback.c echo void __security_init_cookie(void) {}
+          >> fallback.c echo void __security_check_cookie(unsigned long long x) { (void)x; }
+          >> fallback.c echo void __security_push_cookie(void) {}
+          >> fallback.c echo void __security_pop_cookie(void) {}
+          >> fallback.c echo long _InterlockedDecrement(volatile long *p) { return --*p; }
+          >> fallback.c echo long _InterlockedIncrement(volatile long *p) { return ++*p; }
+          >> fallback.c echo int LmiVswprintfStub(void) { return 0; }
+          "%CC%" /nologo /c /Fo:fallback.obj fallback.c
+          dir fallback.obj
           echo "=== MANUAL LINK ==="
           set "WDFLIB=C:\Program Files (x86)\Windows Kits\10\Lib\wdf\kmdf\arm64\1.31"
           cd src\intermediate\ARM64

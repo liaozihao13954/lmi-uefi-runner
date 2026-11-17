@@ -115,6 +115,122 @@ jobs:
             }
           }
 
+      # ------------------------------------------------------------------
+      # LMI diagnostics: append a tiny file logger to the driver and sprinkle
+      # progress markers along the device-start path.  The panel path is a
+      # black box on lmi (no serial, no kernel debugger), so the only way to
+      # learn where the driver stops is to have it write C:\ftlog.txt itself.
+      # ------------------------------------------------------------------
+      - name: LMI diagnostic logging
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $cfiles = Get-ChildItem 'src' -Recurse -Include *.c
+          $drv = $cfiles | Where-Object { (Get-Content $_.FullName -Raw) -match 'WdfDriverCreate' } | Select-Object -First 1
+          $dev = $cfiles | Where-Object { (Get-Content $_.FullName -Raw) -match 'WdfCmResourceListGetCount' } | Select-Object -First 1
+          $spb = $cfiles | Where-Object { (Get-Content $_.FullName -Raw) -match 'WdfIoTargetSendWriteSynchronously' } | Select-Object -First 1
+          if (-not $drv) { throw 'driver.c not found' }
+          if (-not $dev) { throw 'device.c not found' }
+          if (-not $spb) { throw 'spb.c not found' }
+          Write-Host "drv=$($drv.FullName)"
+          Write-Host "dev=$($dev.FullName)"
+          Write-Host "spb=$($spb.FullName)"
+
+          $proto = @(
+            'extern void LmiLog(const char* tag);',
+            'extern void LmiLogStatus(const char* tag, long st);',
+            'extern void LmiLogSeq(const char* tag);'
+          )
+          foreach ($f in @($drv, $dev, $spb)) {
+            $cur = Get-Content -LiteralPath $f.FullName
+            Set-Content -LiteralPath $f.FullName -Value ($proto + $cur) -Encoding ASCII
+          }
+
+          function Insert-Line {
+            param([string]$File, [string]$Anchor, [string]$Code, [switch]$After)
+            $lines = @(Get-Content -LiteralPath $File)
+            $hit = -1
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i].Trim() -eq $Anchor) { $hit = $i; break }
+            }
+            if ($hit -lt 0) { throw "anchor not found: $Anchor" }
+            $ind = [regex]::Match($lines[$hit], '^[ \t]*').Value
+            if ($After) {
+              if ($hit -lt ($lines.Count - 1)) {
+                $n = @($lines[0..$hit]) + ($ind + $Code) + @($lines[($hit + 1)..($lines.Count - 1)])
+              } else {
+                $n = @($lines) + ($ind + $Code)
+              }
+            } else {
+              if ($hit -gt 0) {
+                $n = @($lines[0..($hit - 1)]) + ($ind + $Code) + @($lines[$hit..($lines.Count - 1)])
+              } else {
+                $n = @($ind + $Code) + @($lines)
+              }
+            }
+            Set-Content -LiteralPath $File -Value $n -Encoding ASCII
+            Write-Host ("  OK  " + $Anchor)
+          }
+
+          Insert-Line -File $drv.FullName -Anchor 'WDF_DRIVER_CONFIG_INIT(&config, OnDeviceAdd);' -Code 'LmiLog("S0:DriverEntry");'
+          Insert-Line -File $drv.FullName -Anchor 'WdfDeviceInitSetPowerPolicyOwnership(DeviceInit, FALSE);' -Code 'LmiLog("S1:OnDeviceAdd");'
+          Insert-Line -File $drv.FullName -Anchor 'status = WdfDeviceCreate(&DeviceInit, &attributes, &fxDevice);' -Code 'LmiLogStatus("S1:WdfDeviceCreate", status);' -After
+
+          Insert-Line -File $dev.FullName -Anchor 'resourceCount = WdfCmResourceListGetCount(FxResourcesTranslated);' -Code 'LmiLogStatus("S2:ResCount", (long)resourceCount);' -After
+          Insert-Line -File $dev.FullName -Anchor 'status = SpbTargetInitialize(FxDevice, &devContext->I2CContext);' -Code 'LmiLogStatus("S3:SpbInit", status);' -After
+          Insert-Line -File $dev.FullName -Anchor 'status = PowerInitialize(FxDevice);' -Code 'LmiLogStatus("S4:PowerInit", status);' -After
+          Insert-Line -File $dev.FullName -Anchor 'status = TchAllocateContext(&devContext->TouchContext, FxDevice);' -Code 'LmiLogStatus("S5:TchAlloc", status);' -After
+          Insert-Line -File $dev.FullName -Anchor 'status = TchRegistryGetControllerSettings(' -Code 'LmiLog("S6:Registry");'
+          Insert-Line -File $dev.FullName -Anchor 'status = ReportConfigureContinuousSimulationTimer(devContext->FxDevice);' -Code 'LmiLogStatus("S7:Timer", status);' -After
+          Insert-Line -File $dev.FullName -Anchor 'status = TchStartDevice(devContext->TouchContext, &devContext->I2CContext);' -Code 'LmiLogStatus("S8:TchStart", status);' -After
+
+          Insert-Line -File $spb.FullName -Anchor 'status = WdfIoTargetSendWriteSynchronously(' -Code 'LmiLogSeq("SPB:W");'
+          Insert-Line -File $spb.FullName -Anchor 'status = WdfIoTargetSendReadSynchronously(' -Code 'LmiLogSeq("SPB:R");'
+
+          $impl = @(
+            '',
+            '/* ===== LMI diagnostic log -> \??\C:\ftlog.txt ===== */',
+            'static long g_lmiSeq = 0;',
+            '',
+            'static void LmiLogWrite(const char* tag, long st, int mode)',
+            '{',
+            '    UNICODE_STRING    path;',
+            '    OBJECT_ATTRIBUTES oa;',
+            '    IO_STATUS_BLOCK   iosb;',
+            '    HANDLE            h = NULL;',
+            '    char              buf[176];',
+            '    int               n = 0;',
+            '    int               i;',
+            '    const char*       hex = "0123456789ABCDEF";',
+            '',
+            '    while (tag && *tag && n < 100) { buf[n++] = *tag++; }',
+            '    if (mode) {',
+            '        unsigned long v = (unsigned long)st;',
+            '        buf[n++] = 32; buf[n++] = 61; buf[n++] = 32;',
+            '        buf[n++] = 48; buf[n++] = 120;',
+            '        for (i = 28; i >= 0; i -= 4) { buf[n++] = hex[(v >> i) & 0xF]; }',
+            '    }',
+            '    buf[n++] = 13; buf[n++] = 10;',
+            '',
+            '    RtlInitUnicodeString(&path, L"\\??\\C:\\ftlog.txt");',
+            '    InitializeObjectAttributes(&oa, &path, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);',
+            '    if (NT_SUCCESS(ZwCreateFile(&h, FILE_APPEND_DATA | SYNCHRONIZE, &oa, &iosb, NULL,',
+            '                                FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ | FILE_SHARE_WRITE,',
+            '                                FILE_OPEN_IF, FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0))) {',
+            '        ZwWriteFile(h, NULL, NULL, NULL, &iosb, buf, (ULONG)n, NULL, NULL);',
+            '        ZwClose(h);',
+            '    }',
+            '}',
+            '',
+            'void LmiLog(const char* tag) { LmiLogWrite(tag, 0, 0); }',
+            'void LmiLogStatus(const char* tag, long st) { LmiLogWrite(tag, st, 1); }',
+            'void LmiLogSeq(const char* tag) { g_lmiSeq++; if (g_lmiSeq <= 80) { LmiLogWrite(tag, g_lmiSeq, 1); } }'
+          )
+          $impl | ForEach-Object { Add-Content -LiteralPath $drv.FullName -Value $_ -Encoding ASCII }
+          Write-Host "logger appended to $($drv.FullName)"
+          Select-String -LiteralPath $drv.FullName -Pattern 'ftlog' | ForEach-Object { Write-Host $_.Line.Trim() }
+
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 

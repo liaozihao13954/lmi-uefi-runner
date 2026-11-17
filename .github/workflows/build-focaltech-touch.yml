@@ -112,8 +112,9 @@ jobs:
           set "LIBDIR="
           for %%W in (10.0.22000.0 10.0.22621.0 10.0.26100.0) do if exist "C:\Program Files (x86)\Windows Kits\10\Lib\%%W\km\arm64\ntoskrnl.lib" set "LIBDIR=C:\Program Files (x86)\Windows Kits\10\Lib\%%W\km\arm64"
           echo LIBDIR=%LIBDIR%
-          echo "=== wdf lib dir ==="
-          dir /b "%LIBDIR%\wdf" 2>nul
+          echo "=== locate WdfLdr.lib / WdfDriverEntry.lib ==="
+          dir /s /b "C:\Program Files (x86)\Windows Kits\10\Lib\*WdfLdr.lib" 2>nul
+          dir /s /b "C:\Program Files (x86)\Windows Kits\10\Lib\*WdfDriverEntry.lib" 2>nul
           echo "=== MANUAL LINK ==="
           cd src\intermediate\ARM64
           set "RES="

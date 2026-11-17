@@ -99,6 +99,16 @@ jobs:
         run: |
           msbuild src\contrib\FocalTechTouch.vcxproj /t:Build /p:TreatWarningAsError=false /p:Configuration=Release /p:Platform=ARM64 /p:WindowsTargetPlatformVersion=10.0.22621.0 /p:DDK_INC_PATH="C:\Program Files (x86)\Windows Kits\10\Include\10.0.22000.0\km" /p:SignMode=Test /p:Inf2CatEnabled=false /m /v:normal
           echo "=== msbuild exit=%errorlevel% ==="
+          echo "=== WDK targets present? ==="
+          dir "C:\Program Files (x86)\Windows Kits\10\build" 2>nul
+          where link.exe 2>nul
+          echo "=== obj files ==="
+          dir /s /b src\intermediate\*.obj 2>nul
+          echo "=== find WDF/WDK libs ==="
+          dir /s /b "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22000.0\km\arm64\*.lib" 2>nul | findstr /i "Wdf Hid ntoskrnl hal WdmSec"
+          echo "=== try explicit Link target ==="
+          msbuild src\contrib\FocalTechTouch.vcxproj /t:Link /p:Configuration=Release /p:Platform=ARM64 /p:WindowsTargetPlatformVersion=10.0.22000.0 /p:DDK_INC_PATH="C:\Program Files (x86)\Windows Kits\10\Include\10.0.22000.0\km" /p:SignMode=Off /p:Inf2CatEnabled=false /v:normal
+          echo "=== link-target exit=%errorlevel% ==="
           dir /s /b src\*.sys 2>nul
           exit /b 0
 

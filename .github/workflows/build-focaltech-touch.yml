@@ -97,6 +97,24 @@ jobs:
                           '<ConfigurationType>Driver</ConfigurationType><DriverType>KMDF</DriverType>')
           Set-Content -Path $proj -Value $t -Encoding UTF8
 
+          #
+          # LMI: drop the two system-wide PoRegisterPowerSettingCallback
+          # registrations.  They are unusual in a KMDF function driver, and the
+          # 0xA0 (INTERNAL_POWER_ERROR, P1=0xBEEF) observed on lmi points at the
+          # power policy manager.  Replace each call with STATUS_SUCCESS so the
+          # driver never touches the global power-setting machinery.
+          #
+          Get-ChildItem 'src' -Recurse -Include *.c | ForEach-Object {
+            $f = $_.FullName
+            $body = Get-Content $f -Raw
+            if ($body -match 'PoRegisterPowerSettingCallback|PoUnregisterPowerSettingCallback') {
+              $body = $body -replace '(?s)status\s*=\s*PoRegisterPowerSettingCallback\s*\(.*?\);', 'status = STATUS_SUCCESS; /* LMI: power callback disabled */'
+              $body = $body -replace '(?s)status\s*=\s*PoUnregisterPowerSettingCallback\s*\(.*?\);', 'status = STATUS_SUCCESS; /* LMI: power unregister disabled */'
+              Set-Content -Path $f -Value $body -Encoding ASCII
+              Write-Host "patched power callbacks in $f"
+            }
+          }
+
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
